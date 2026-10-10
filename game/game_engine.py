@@ -1,3 +1,5 @@
+import array
+import math
 import random
 import pygame
 from game.color_button import ColorButton
@@ -27,13 +29,33 @@ class GameEngine:
         self.state = "WATCH"
         self.showing_step = 0
         self.step_start_time = 0
-        self.flash_duration = 450
-        self.pause_duration = 200
+        self.base_flash_duration = 450
+        self.base_pause_duration = 200
+        self.min_flash_duration = 180
+        self.min_pause_duration = 80
+        self.flash_duration = self.base_flash_duration
+        self.pause_duration = self.base_pause_duration
         self.is_flashing = False
+
+        self.timer_base_duration = 3500
+        self.timer_per_step = 900
+        self.timer_min_duration = 3500
+        self.timer_max_duration = 15000
+        self.player_turn_start = 0
+        self.player_turn_duration = 0
+        self.player_turn_timer_active = False
 
         self.player_lit_button = None
         self.player_lit_start = 0
         self.player_flash_duration = 150
+        self.sounds = {}
+        self.sound_frequencies = {
+            0: 261.63,
+            1: 329.63,
+            2: 392.00,
+            3: 523.25,
+        }
+        self.audio_enabled = self.initialize_audio()
 
         self.font_title = pygame.font.SysFont(None, 40)
         self.font_medium = pygame.font.SysFont(None, 28)
@@ -43,14 +65,68 @@ class GameEngine:
     def start_next_round(self):
         new_color = random.randint(0, 3)
 
-        self.sequence += self.sequence + [new_color]
-        
+        self.sequence.append(new_color)
+        round_number = len(self.sequence)
+        self.flash_duration = max(
+            self.min_flash_duration,
+            self.base_flash_duration - (round_number - 1) * 25,
+        )
+        self.pause_duration = max(
+            self.min_pause_duration,
+            self.base_pause_duration - (round_number - 1) * 12,
+        )
+
         self.player_input.clear()
         self.state = "WATCH"
         self.showing_step = 0
         self.step_start_time = pygame.time.get_ticks()
         self.is_flashing = True
+        self.player_turn_timer_active = False
         self.buttons[self.sequence[0]].is_lit = True
+        self.play_sound(self.sequence[0])
+
+    def initialize_audio(self):
+        try:
+            if pygame.mixer.get_init() is None:
+                pygame.mixer.init(frequency=44100, size=-16, channels=1, buffer=512)
+            for color_id, frequency in self.sound_frequencies.items():
+                self.sounds[color_id] = self.create_tone(frequency)
+        except pygame.error:
+            self.sounds.clear()
+            return False
+        return True
+
+    def create_tone(self, frequency):
+        sample_rate = 44100
+        sample_count = int(sample_rate * 0.12)
+        samples = array.array("h")
+
+        for index in range(sample_count):
+            envelope = min(1.0, index / 200)
+            envelope *= min(1.0, (sample_count - index) / 800)
+            sample = math.sin(2 * math.pi * frequency * index / sample_rate)
+            samples.append(int(14000 * envelope * sample))
+
+        return pygame.mixer.Sound(buffer=samples.tobytes())
+
+    def play_sound(self, color_id):
+        sound = self.sounds.get(color_id)
+        if sound is not None:
+            sound.play()
+
+    def calculate_player_turn_duration(self):
+        duration = self.timer_base_duration + len(self.sequence) * self.timer_per_step
+        return max(self.timer_min_duration, min(self.timer_max_duration, duration))
+
+    def start_player_turn(self, now):
+        self.state = "PLAYER_TURN"
+        self.player_turn_start = now
+        self.player_turn_duration = self.calculate_player_turn_duration()
+        self.player_turn_timer_active = True
+
+    def end_game(self):
+        self.state = "GAME_OVER"
+        self.player_turn_timer_active = False
 
     def update(self):
         now = pygame.time.get_ticks()
@@ -74,10 +150,14 @@ class GameEngine:
                     if self.showing_step < len(self.sequence):
                         next_id = self.sequence[self.showing_step]
                         self.buttons[next_id].is_lit = True
+                        self.play_sound(next_id)
                         self.is_flashing = True
                         self.step_start_time = now
                     else:
-                        self.state = "PLAYER_TURN"
+                        self.start_player_turn(now)
+        elif self.state == "PLAYER_TURN" and self.player_turn_timer_active:
+            if now - self.player_turn_start >= self.player_turn_duration:
+                self.end_game()
 
     def handle_event(self, event):
         if self.state == "GAME_OVER":
@@ -86,11 +166,17 @@ class GameEngine:
             return
 
         if self.state == "PLAYER_TURN" and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            now = pygame.time.get_ticks()
+            if self.player_turn_timer_active and now - self.player_turn_start >= self.player_turn_duration:
+                self.end_game()
+                return
+
             for btn in self.buttons:
                 if btn.contains(event.pos):
                     btn.is_lit = True
                     self.player_lit_button = btn
-                    self.player_lit_start = pygame.time.get_ticks()
+                    self.player_lit_start = now
+                    self.play_sound(btn.color_id)
 
                     self.register_player_click(btn.color_id)
                     break
@@ -100,11 +186,12 @@ class GameEngine:
         current_idx = len(self.player_input) - 1
 
         if self.player_input[current_idx] != self.sequence[current_idx]:
-            self.state = "GAME_OVER"
+            self.end_game()
             return
 
         if len(self.player_input) == len(self.sequence):
             self.score += 1
+            self.player_turn_timer_active = False
             self.start_next_round()
 
     def reset(self):
@@ -114,6 +201,7 @@ class GameEngine:
         for btn in self.buttons:
             btn.is_lit = False
         self.player_lit_button = None
+        self.player_turn_timer_active = False
         self.start_next_round()
 
     def render(self, screen):
@@ -129,6 +217,16 @@ class GameEngine:
         status_color = (190, 195, 205) if self.state == "WATCH" else (80, 240, 130)
         status_surf = self.font_medium.render(status_text, True, status_color)
         screen.blit(status_surf, (self.width // 2 - status_surf.get_width() // 2, 95))
+
+        if self.state == "PLAYER_TURN" and self.player_turn_timer_active:
+            elapsed = pygame.time.get_ticks() - self.player_turn_start
+            remaining = max(0, self.player_turn_duration - elapsed)
+            progress = remaining / self.player_turn_duration
+            timer_rect = pygame.Rect(50, 125, self.width - 100, 14)
+            pygame.draw.rect(screen, (65, 70, 80), timer_rect, border_radius=7)
+            fill_rect = timer_rect.copy()
+            fill_rect.width = int(timer_rect.width * progress)
+            pygame.draw.rect(screen, (80, 220, 130), fill_rect, border_radius=7)
 
         for btn in self.buttons:
             btn.render(screen)
