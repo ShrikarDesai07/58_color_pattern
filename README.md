@@ -1,88 +1,113 @@
 # Memory Color Pattern Repair Lab
 
-This project is a pattern recall memory game (Simon-style) using **Pygame**. It introduces students to finite state machines (`WATCH`, `PLAYER_TURN`, `GAME_OVER`), time-based sequence playback, index-matching input validation, and grid-based visual button feedback within an object-oriented codebase.
----
+## Student Details
 
-## What's Provided
+- **Name:** Shrikar Desai
+- **SRN:** PES1UG24CS916
+- **Project:** Memory Color Pattern Repair Lab
+- **Technology:** Python 3.10+ and Pygame
+- **AI pair-programming tool:** GitHub Copilot in VS Code
 
-A working Memory Color Pattern game with:
+## Project Overview
 
-- A 2x2 grid of four colored buttons (Red, Blue, Green, Yellow) with dim and illuminated lighting states
-- Automated timed playback that flashes the sequence step-by-step for the player to watch
-- Click detection registering player inputs and checking order against the target sequence
-- Score tracking, visual turn indicators, and a Game Over overlay with restart functionality
+Memory Color Pattern is a Simon-style pattern-recall game built with Pygame. The player watches a sequence of colored pads, then repeats the sequence in the same order. Each successful round adds one new color to the sequence.
 
-It has **one deliberate bug** and **three optional features** left as tasks to implement. You are expected to **analyze**, **interact with an AI assistant**, and **complete/fix** the game to make it fully functional and more interesting.
+The project uses a simple finite-state flow:
 
-### **Use an LLM (e.g. ChatGPT or Claude) as your debugging and pair-programming partner for this lab.**
----
+- `WATCH`: The game plays the sequence for the player.
+- `PLAYER_TURN`: The player repeats the sequence before the countdown expires.
+- `GAME_OVER`: Incorrect input or timer expiry ends the round. Press `R` to restart.
 
-## Getting Started
+## Features Implemented
 
-### Setup
+### Task 1 — Sequence duplication fix
 
-1. Make sure you have Python 3.10+ installed.
-2. Install dependencies:
+Each successful round appends exactly one new color to the existing sequence. Previously generated colors retain their order.
+
+### Task 2 — Dynamic playback acceleration
+
+The game reduces the pad flash and between-flash pause durations as the round number increases. Minimum limits keep playback from becoming excessively fast.
+
+For round number \(n\):
+
+- Flash duration: `max(180, 450 - 25 × (n - 1))` milliseconds.
+- Pause duration: `max(80, 200 - 12 × (n - 1))` milliseconds.
+
+### Task 3 — Sound effects
+
+Each colored pad has a distinct generated sine-wave tone. Sounds play when pads illuminate during sequence playback and when the player clicks a pad. Tones are cached, and the game continues without sound if audio initialization fails.
+
+| Pad | Frequency |
+|---|---:|
+| Red | 261.63 Hz |
+| Blue | 329.63 Hz |
+| Green | 392.00 Hz |
+| Yellow | 523.25 Hz |
+
+### Task 4 — Player-turn countdown timer
+
+A horizontal countdown bar is shown only during `PLAYER_TURN`. The timer starts after the sequence playback finishes and uses elapsed time rather than frame counts. When time expires, the game transitions to `GAME_OVER`; late clicks are rejected.
+
+The time budget is calculated from the sequence length and clamped to a minimum of 3,500 ms and a maximum of 15,000 ms:
+
+`duration = clamp(3500 + sequence_length × 900, 3500, 15000)` milliseconds.
+
+## Setup and Run
+
+Make sure Python 3.10 or newer is installed. From the repository root, install Pygame:
 
 ```bash
-pip install pygame
+python -m pip install pygame
 ```
 
-3. Run the game:
+Run the game:
 
 ```bash
 python main.py
 ```
 
-**Controls:** Left-click colored pads to repeat the sequence. Press R to restart after Game Over.
+### Controls
 
+- Left-click a colored pad to enter the sequence.
+- Press `R` on the Game Over screen to restart.
 
-## Tasks to Complete
+## Repository Structure
 
-Each task must be completed using an iterative process involving LLM suggestions and your critical code review.
-
-### Task 1: Fix the sequence duplication bug
-
-Advancing to the next round causes the memory pattern to explode in length rather than extending by one step. Ensure that each successful round strictly appends a single new color step to the active sequence.
-
-### Task 2: Implement dynamic playback acceleration
-
-Sequences flash at the exact same slow, fixed speed throughout every round. Make the playback dynamically accelerate by decreasing the flash and pause durations as the player advances further into higher rounds.
-
-### Task 3: Implement sound effects or audio frequencies
-
-The memory puzzle is completely silent, relying only on visual illumination. Assign a distinct musical pitch or audio frequency to each of the four colored pads that sounds whenever a tile is flashed or clicked.
-
-### Task 4: Implement a Player Turn Input Timer
-
-Players currently have unlimited time to study the board between clicks. Introduce a dynamic countdown timer bar for the player's turn that triggers a game over if time expires before completing the pattern.
-
----
-
-## Expected Behavior
-
-- At the beginning of each round, the game displays the accumulated sequence step-by-step with illuminated button states.   
-- Each round strictly appends one new step rather than duplicating previous patterns.  
-- Left-clicking a pad illuminates it briefly and registers the player's guess.
-- Entering any incorrect button immediately triggers the Game Over screen.
-- Pressing R on the Game Over screen clears the sequence, score, and state back to round 1.
----
-
-## Folder Structure
-
-```
-memory_color_pattern/
+```text
+58_color_pattern/
 ├── game/
 │   ├── color_button.py
-│   └── game_engine.py
+│   ├── game_engine.py
+│   └── __pycache__/            # Generated Python bytecode (not needed to run)
+├── submission/
+│   ├── Before.mp4              # Gameplay before changes
+│   ├── After.mp4               # Gameplay after changes
+│   ├── chat.json               # Exported Copilot chat history
+│   └── copilot_1.png ... copilot_6.png  # Copilot evidence screenshots
 ├── main.py
 └── README.md
 ```
 
-## Submission Checklist
+Python may create `__pycache__/` automatically when the project is run; those generated bytecode files are not part of the source code.
 
-Submission is only the following three things:
+## Testing Checklist
 
-- [] A 10-second video of gameplay **before** your changes, showing the bug/broken behavior
-- [] A 10-second video of gameplay **after** your changes, showing the bug fixed and the new features working
-- [] The Chat/LLM used page link, with the complete chat history
+- [ ] Confirm each successful round adds exactly one color.
+- [ ] Confirm playback gets faster in later rounds and respects minimum timing limits.
+- [ ] Listen for distinct sounds during playback and player clicks.
+- [ ] Confirm the timer appears only during the player's turn and decreases over time.
+- [ ] Let the timer expire and confirm Game Over appears.
+- [ ] Enter an incorrect color and confirm Game Over appears immediately.
+- [ ] Press `R` and confirm the game restarts with score zero and a new one-color sequence.
+
+Syntax checks and focused runtime assertions were reported as passing during development. Interactive testing should also be performed on the target machine, especially to verify audio output and timer expiry.
+
+## Submission
+
+The `submission/` directory contains the before and after gameplay videos, the exported Copilot chat history, and supporting Copilot screenshots.
+
+- **Before video:** [submission/Before.mp4](submission/Before.mp4)
+- **After video:** [submission/After.mp4](submission/After.mp4)
+- **Exported Copilot chat history:** [submission/chat.json](submission/chat.json)
+
+If your instructor requires a shareable Copilot session URL in addition to the exported transcript, submit that URL separately with the lab materials.
